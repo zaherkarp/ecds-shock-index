@@ -1,0 +1,11 @@
+name: ecds-shock-index
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - pandas>=2.0
+  - pip
+  - pip:
+      - pytest>=7.4
+      - jupyter>=1.0
+      - -e .
