@@ -12,10 +12,10 @@ def sample_df():
     return pd.DataFrame(
         {
             "measure_id": ["COL", "BCS", "A1C"],
-            "completeness_rate": [0.88, 0.79, 0.83],
-            "mapping_coverage": [0.91, 0.85, 0.89],
-            "variance_ratio": [1.12, 1.30, 1.05],
-            "cutpoint_shift": [0.08, 0.16, 0.05],
+            "completeness_rate": [0.95, 0.72, 0.85],
+            "mapping_coverage": [0.93, 0.68, 0.88],
+            "variance_ratio": [1.03, 1.45, 1.10],
+            "cutpoint_shift": [0.02, 0.09, 0.05],
             "measure_weight": [1, 1, 3],
         }
     )

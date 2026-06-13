@@ -27,12 +27,14 @@ The ECDS Shock Index is a compact way to represent these dynamics as one interpr
 
 ## Conceptual Components
 
-We define four components, each normalized to a 0–1 scale:
+We define four components, each normalized to a 0–1 **risk** scale (higher = more risk):
 
-- **CCS (Clinical Completeness Score):** How complete and clinically mapped the data is.
-- **EAV (ECDS Adoption Variability):** How much variation adoption introduces relative to baseline.
-- **CPR (Cutpoint Pressure Risk):** How much expected cutpoint movement pressures measure achievement.
-- **WM (Weight Multiplier):** How strongly Stars weighting amplifies the impact of that measure.
+- **CCS (Clinical Completeness Gap):** The gap between perfect and actual data completeness/mapping. Incomplete capture is the dominant ECDS-transition risk, so *less* complete data scores higher.
+- **EAV (ECDS Adoption Variability):** How far the distribution deviates from its stable baseline in either direction; a stable distribution carries no adoption-variability risk.
+- **CPR (Cutpoint Pressure Risk):** Expected cutpoint movement, anchored to the CMS ±5% guardrail that caps realized year-over-year movement; movement beyond the guardrail represents latent pressure deferred to later Star years.
+- **WM (Weight Multiplier):** How strongly Stars weighting amplifies the impact of that measure (process = 1, outcome = 3, improvement = 5; patient experience = 2 as of 2026).
+
+> The clinical shock index (Allgöwer & Buri, 1967) is a *ratio* of heart rate to systolic blood pressure. This index borrows the "compact early-warning signal" idea but is a weighted *composite*, not a ratio.
 
 The composite index is:
 
@@ -77,3 +79,7 @@ Future iterations will add:
 - visualization templates for executive and operational reporting.
 
 If your team is preparing for the next phase of quality measurement modernization, we hope this framework helps you move from intuition to quantified risk.
+
+## Evidence Base
+
+Each component direction and parameter is grounded in the published CMS Star Ratings and NCQA HEDIS ECDS literature — cut-point guardrails and Tukey outlier deletion, the 2026 measure-weight changes, and the NCQA hybrid-to-digital transition timeline. See [`docs/literature-evaluation.md`](../docs/literature-evaluation.md) for the full review and references.
