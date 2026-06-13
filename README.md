@@ -2,6 +2,8 @@
 
 The **ECDS Shock Index** repository provides a reproducible analytics framework for modeling how shifts in Electronic Clinical Data Systems (ECDS) measure performance can impact Medicare Advantage Star Ratings.
 
+> **On the name.** Like the clinical shock index (heart rate ÷ systolic blood pressure), this index is a compact early-warning signal. Unlike it, the ECDS Shock Index is a *weighted composite* of risk components rather than a ratio — see [`docs/literature-evaluation.md`](docs/literature-evaluation.md) for the methodology and its evidence base.
+
 ## Project Motivation
 
 As organizations transition quality measurement pipelines toward ECDS and digital quality methods, historical assumptions about measure distributions can break. The ECDS Shock Index is designed to:
@@ -54,18 +56,18 @@ pip install -e ".[dev]"
 from ecds_shock_index import ShockIndexCalculator, ccs_score, eav_score, cpr_score, wm_score, classify_risk
 
 # 1. Compute individual factor scores from raw inputs
-ccs = ccs_score(completeness_rate=0.82, mapping_coverage=0.90)   # -> 0.86
-eav = eav_score(variance_ratio=1.15)                              # -> 0.575
-cpr = cpr_score(cutpoint_shift=0.22)                              # -> 0.44
+ccs = ccs_score(completeness_rate=0.82, mapping_coverage=0.90)   # -> 0.14 (completeness gap)
+eav = eav_score(variance_ratio=1.15)                              # -> 0.15 (deviation from baseline)
+cpr = cpr_score(cutpoint_shift=0.22)                              # -> 0.868 (guardrail-aware)
 wm  = wm_score(measure_weight=3, max_weight=5)                    # -> 0.60
 
 # 2. Calculate the composite shock index
 calculator = ShockIndexCalculator()   # uses default weights
 index = calculator.calculate(ccs=ccs, eav=eav, cpr=cpr, wm=wm)
-print(f"Shock Index: {index:.4f}")    # 0.6325
+print(f"Shock Index: {index:.4f}")    # 0.3801
 
 # 3. Classify into a risk tier
-print(classify_risk(index))           # "high"
+print(classify_risk(index))           # "moderate"
 ```
 
 ### Batch Scoring (DataFrame)
@@ -90,8 +92,8 @@ print(scored[["measure_id", "shock_index", "risk_tier"]])
 # Contract-level summary
 summary = calc.aggregate_contract(scored)
 print(summary)
-# {'weighted_shock_index': 0.4261, 'mean_shock_index': 0.4389,
-#  'max_shock_index': 0.4952, 'measure_count': 3, 'risk_tier': 'moderate'}
+# {'weighted_shock_index': 0.322, 'mean_shock_index': 0.3018,
+#  'max_shock_index': 0.4207, 'measure_count': 3, 'risk_tier': 'moderate'}
 ```
 
 ## Command Line Interface
@@ -141,8 +143,10 @@ python -m src.cli batch \
 python -m src.cli batch \
   --ecds data/raw/example_ncqa_ecds.csv \
   --weights data/raw/example_cms_measure_weights.csv \
+  --guardrail 0.05 \
   --max-shift 1.0 \
-  --max-weight 3.0
+  --max-weight 3.0 \
+  --sensitivity 1.0
 ```
 
 ## Risk Tiers
@@ -158,12 +162,22 @@ Shock index scores are classified into four tiers:
 
 ## Component Reference
 
-| Component | Full Name                      | What It Measures                                     | Default Weight |
-| --------- | ------------------------------ | ---------------------------------------------------- | -------------- |
-| CCS       | Clinical Completeness Score    | Average of data completeness and mapping coverage    | 0.35           |
-| EAV       | ECDS Adoption Variability      | Distribution volatility relative to baseline         | 0.25           |
-| CPR       | Cutpoint Pressure Risk         | Expected cutpoint movement pressure                  | 0.20           |
-| WM        | Weight Multiplier              | Stars measure weight amplification effect            | 0.20           |
+All four components are **risk** scores in `[0, 1]` where higher means more risk.
+
+| Component | Full Name                        | What It Measures                                          | Default Weight |
+| --------- | -------------------------------- | --------------------------------------------------------- | -------------- |
+| CCS       | Clinical Completeness Gap Score  | Completeness gap, `1 − mean(completeness, mapping)`        | 0.35           |
+| EAV       | ECDS Adoption Variability        | Absolute deviation of the variance ratio from baseline    | 0.25           |
+| CPR       | Cutpoint Pressure Risk           | Guardrail-aware cutpoint movement pressure (CMS ±5% cap)  | 0.20           |
+| WM        | Weight Multiplier                | Stars measure weight amplification effect                 | 0.20           |
+
+## Evidence Base
+
+The components and their directions are grounded in the published CMS Star Ratings and
+NCQA HEDIS ECDS literature — including CMS cut-point guardrails and Tukey outlier
+deletion, the 2026 measure-weight changes, and the NCQA hybrid-to-digital transition
+timeline. See [`docs/literature-evaluation.md`](docs/literature-evaluation.md) for the
+full review, the rationale behind each formula, and references.
 
 ## Data File Formats
 
@@ -175,7 +189,7 @@ Shock index scores are classified into four tiers:
 | `completeness_rate`| float | Data completeness rate [0, 1]                |
 | `mapping_coverage` | float | Coding/mapping coverage rate [0, 1]          |
 | `variance_ratio`   | float | Variance ratio vs. baseline (1.0 = no change)|
-| `cutpoint_shift`   | float | Absolute cutpoint shift magnitude            |
+| `cutpoint_shift`   | float | Absolute cutpoint shift; compared against the CMS ±5% guardrail (0.05) |
 
 ### CMS Measure Weights CSV (`--weights`)
 

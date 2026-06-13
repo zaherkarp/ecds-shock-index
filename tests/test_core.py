@@ -18,34 +18,41 @@ from ecds_shock_index import (
 
 
 class TestCcsScore:
-    def test_average(self):
-        assert ccs_score(0.8, 0.9) == pytest.approx(0.85)
+    """CCS is a completeness *gap*: higher = less complete = more risk."""
 
-    def test_perfect(self):
-        assert ccs_score(1.0, 1.0) == pytest.approx(1.0)
+    def test_gap_from_average(self):
+        assert ccs_score(0.8, 0.9) == pytest.approx(0.15)
 
-    def test_zero(self):
-        assert ccs_score(0.0, 0.0) == pytest.approx(0.0)
+    def test_perfect_capture_is_zero_risk(self):
+        assert ccs_score(1.0, 1.0) == pytest.approx(0.0)
+
+    def test_no_capture_is_max_risk(self):
+        assert ccs_score(0.0, 0.0) == pytest.approx(1.0)
 
     def test_clips_above_one(self):
-        assert ccs_score(1.2, 1.0) == pytest.approx(1.0)
+        # Negative inputs would push the gap above 1.0; clamp at 1.0.
+        assert ccs_score(-0.5, 0.0) == pytest.approx(1.0)
 
     def test_clips_below_zero(self):
-        assert ccs_score(-0.5, 0.0) == pytest.approx(0.0)
+        # Over-complete inputs would push the gap below 0.0; clamp at 0.0.
+        assert ccs_score(1.2, 1.0) == pytest.approx(0.0)
 
 
 class TestEavScore:
-    def test_baseline_is_midpoint(self):
-        assert eav_score(1.0, baseline=1.0) == pytest.approx(0.5)
+    def test_baseline_is_zero_risk(self):
+        assert eav_score(1.0, baseline=1.0) == pytest.approx(0.0)
 
     def test_above_baseline(self):
-        assert eav_score(1.5, baseline=1.0) == pytest.approx(0.75)
+        assert eav_score(1.5, baseline=1.0) == pytest.approx(0.5)
 
-    def test_below_baseline(self):
-        assert eav_score(0.5, baseline=1.0) == pytest.approx(0.25)
+    def test_below_baseline_is_symmetric(self):
+        assert eav_score(0.5, baseline=1.0) == pytest.approx(0.5)
 
     def test_clips_high_ratio(self):
         assert eav_score(3.0, baseline=1.0) == pytest.approx(1.0)
+
+    def test_sensitivity_scales_deviation(self):
+        assert eav_score(1.5, baseline=1.0, sensitivity=2.0) == pytest.approx(0.25)
 
     def test_invalid_baseline(self):
         with pytest.raises(ValueError, match="baseline"):
@@ -53,19 +60,32 @@ class TestEavScore:
         with pytest.raises(ValueError, match="baseline"):
             eav_score(1.0, baseline=-1)
 
+    def test_invalid_sensitivity(self):
+        with pytest.raises(ValueError, match="sensitivity"):
+            eav_score(1.0, sensitivity=0)
+
 
 class TestCprScore:
-    def test_normalization(self):
-        assert cpr_score(0.25, max_shift=0.5) == pytest.approx(0.5)
+    def test_within_guardrail_scales_realized(self):
+        # Half the guardrail consumed, no latent term -> 0.8 * 0.5.
+        assert cpr_score(0.025, guardrail=0.05) == pytest.approx(0.4)
 
-    def test_clips_to_one(self):
-        assert cpr_score(0.8, max_shift=0.5) == pytest.approx(1.0)
+    def test_at_guardrail_is_full_realized(self):
+        assert cpr_score(0.05, guardrail=0.05) == pytest.approx(0.8)
+
+    def test_beyond_guardrail_adds_latent(self):
+        # realized=1.0, latent=(0.55-0.05)/0.5=1.0 -> 0.8 + 0.2.
+        assert cpr_score(0.55, guardrail=0.05, max_shift=0.5) == pytest.approx(1.0)
 
     def test_negative_shift_uses_absolute(self):
-        assert cpr_score(-0.25, max_shift=0.5) == pytest.approx(0.5)
+        assert cpr_score(-0.025, guardrail=0.05) == pytest.approx(0.4)
 
     def test_zero_shift(self):
         assert cpr_score(0.0) == pytest.approx(0.0)
+
+    def test_invalid_guardrail(self):
+        with pytest.raises(ValueError, match="guardrail"):
+            cpr_score(0.2, guardrail=0)
 
     def test_invalid_max_shift(self):
         with pytest.raises(ValueError, match="max_shift"):
