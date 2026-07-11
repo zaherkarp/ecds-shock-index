@@ -179,6 +179,15 @@ deletion, the 2026 measure-weight changes, and the NCQA hybrid-to-digital transi
 timeline. See [`docs/literature-evaluation.md`](docs/literature-evaluation.md) for the
 full review, the rationale behind each formula, and references.
 
+## Methodology Governance
+
+Changes to the index methodology (formulas, weights, parameters, risk tiers) are governed
+by a standing statistician review team and an evidence-graded debate process — see
+[`docs/statistical-governance.md`](docs/statistical-governance.md). Every proposal,
+including rejected ones, is recorded in the decision log at
+[`docs/decisions/`](docs/decisions/) with its evidence trail and independent numerical
+verification.
+
 ## Data File Formats
 
 ### NCQA ECDS CSV (`--ecds`)
