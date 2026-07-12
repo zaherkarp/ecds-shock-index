@@ -6,6 +6,7 @@ that combines factor values using a weighted average.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +28,18 @@ RISK_TIERS: dict[str, tuple[float, float]] = {
 def _clip_01(value: float) -> float:
     """Clamp a numeric value to the inclusive range [0, 1]."""
     return max(0.0, min(1.0, value))
+
+
+def _require_finite(**values: float) -> None:
+    """Raise ``ValueError`` if any named value is NaN or infinite.
+
+    Non-finite inputs must never map into [0, 1]: ``_clip_01`` would
+    silently score NaN as 1.0 (maximum risk) and +/-inf as a sign-dependent
+    extreme. See docs/decisions/0004-reject-nonfinite-inputs.md.
+    """
+    for name, value in values.items():
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite (got {value})")
 
 
 # ---------------------------------------------------------------------------
@@ -55,28 +68,41 @@ def ccs_score(completeness_rate: float, mapping_coverage: float) -> float:
     scores 1.0. This direction reflects NCQA ECDS guidance that incomplete /
     poorly-mapped capture is the dominant driver of transition risk. (Earlier
     versions returned raw completeness, which inverted the risk direction.)
+
+    Raises ``ValueError`` if either input is NaN or infinite.
     """
+    _require_finite(completeness_rate=completeness_rate, mapping_coverage=mapping_coverage)
     return _clip_01(1.0 - (completeness_rate + mapping_coverage) / 2.0)
 
 
 def eav_score(variance_ratio: float, baseline: float = 1.0, sensitivity: float = 1.0) -> float:
     """Compute the ECDS Adoption Variability (EAV) score.
 
-    Risk grows with the *deviation* of the variance ratio from baseline in
-    either direction; a stable distribution (``variance_ratio == baseline``)
-    carries no adoption-variability risk.
+    Risk grows with the deviation of the variance ratio from baseline in
+    either direction, measured on the **log scale** so that k-fold inflation
+    and k-fold compression carry identical risk (``eav(r) == eav(1/r)``):
 
-        EAV = |variance_ratio / baseline - 1| / sensitivity   (clipped to [0, 1])
+        EAV = |ln(variance_ratio / baseline)| / (sensitivity * ln 2)   (clipped to [0, 1])
 
-    ``sensitivity`` sets how quickly deviation saturates: with the default of
-    1.0, a ratio twice (or zero times) the baseline maps to 1.0. (Earlier
-    versions mapped the stable case to 0.5, over-stating baseline risk.)
+    A stable distribution (``variance_ratio == baseline``) scores 0.0. The
+    ``ln 2`` anchor makes the score saturate at 1.0 when the ratio doubles —
+    or halves — relative to baseline (more generally, at ``2**sensitivity``
+    and its reciprocal). A non-positive ``variance_ratio`` is degenerate
+    (a variance ratio cannot be <= 0) and scores 1.0. (Earlier versions used
+    the arithmetic deviation ``|ratio - 1|``, which understated downside
+    deviation: halving scored 0.5 while doubling scored 1.0.)
+
+    Raises ``ValueError`` if any input is NaN or infinite, or if ``baseline``
+    or ``sensitivity`` is not positive.
     """
+    _require_finite(variance_ratio=variance_ratio, baseline=baseline, sensitivity=sensitivity)
     if baseline <= 0:
         raise ValueError("baseline must be greater than zero")
     if sensitivity <= 0:
         raise ValueError("sensitivity must be greater than zero")
-    return _clip_01(abs((variance_ratio / baseline) - 1.0) / sensitivity)
+    if variance_ratio <= 0:
+        return 1.0
+    return _clip_01(abs(math.log(variance_ratio / baseline)) / (sensitivity * math.log(2.0)))
 
 
 def cpr_score(cutpoint_shift: float, guardrail: float = 0.05, max_shift: float = 0.5) -> float:
@@ -93,7 +119,11 @@ def cpr_score(cutpoint_shift: float, guardrail: float = 0.05, max_shift: float =
     A shift at or beyond the guardrail consumes the full realized share; any
     excess contributes the (smaller) latent share, representing pressure that
     re-surfaces in later Star years once the guardrail relaxes.
+
+    Raises ``ValueError`` if any input is NaN or infinite, or if ``guardrail``
+    or ``max_shift`` is not positive.
     """
+    _require_finite(cutpoint_shift=cutpoint_shift, guardrail=guardrail, max_shift=max_shift)
     if guardrail <= 0:
         raise ValueError("guardrail must be greater than zero")
     if max_shift <= 0:
@@ -111,8 +141,19 @@ def wm_score(measure_weight: float, max_weight: float = 5.0) -> float:
     outcome measures = 3, the improvement measures = 5, and patient-experience /
     access measures = 2 as of the 2026 Star Ratings (reduced from 4). The score
     is the weight normalized by ``max_weight`` (default 5.0, the improvement
-    weight), so higher-weighted measures amplify the composite more strongly.
+    weight).
+
+    WM is an **exposure** indicator (how much a measure counts in Stars), not a
+    hazard indicator. It is reported alongside the hazard components but no
+    longer enters the measure-level composite by default; exposure enters the
+    contract-level index exactly once, as the aggregation weight in
+    ``ShockIndexCalculator.aggregate_contract``. See
+    docs/decisions/0002-remove-wm-from-measure-composite.md.
+
+    Raises ``ValueError`` if any input is NaN or infinite, or if ``max_weight``
+    is not positive.
     """
+    _require_finite(measure_weight=measure_weight, max_weight=max_weight)
     if max_weight <= 0:
         raise ValueError("max_weight must be greater than zero")
     return _clip_01(measure_weight / max_weight)
@@ -148,17 +189,24 @@ def classify_risk(score: float) -> str:
 class ShockIndexCalculator:
     """Calculator for combining ECDS Shock Index components.
 
-    The default weighting favors completeness and measure weight while still
-    accounting for variance and cutpoint pressure.
+    The measure-level index is a weighted average of the three **hazard**
+    components (CCS, EAV, CPR). The default weights (0.4375, 0.3125, 0.25)
+    are the neutral renormalization of the previous hazard weights
+    (0.35, 0.25, 0.20), preserving their relative importance. The WM
+    **exposure** component is reported but carries default weight 0.0:
+    Stars measure weight enters the contract-level index exactly once, as
+    the aggregation weight in ``aggregate_contract`` (hazard × exposure),
+    rather than twice (additively and multiplicatively). See
+    docs/decisions/0002-remove-wm-from-measure-composite.md.
 
     Raises ``ValueError`` during ``__post_init__`` if weights are negative
     or do not sum to 1.0 (within tolerance of 1e-6).
     """
 
-    alpha_ccs: float = 0.35
-    beta_eav: float = 0.25
-    gamma_cpr: float = 0.20
-    delta_wm: float = 0.20
+    alpha_ccs: float = 0.4375
+    beta_eav: float = 0.3125
+    gamma_cpr: float = 0.25
+    delta_wm: float = 0.0
 
     def __post_init__(self) -> None:
         weights = [self.alpha_ccs, self.beta_eav, self.gamma_cpr, self.delta_wm]
@@ -168,7 +216,7 @@ class ShockIndexCalculator:
         if abs(total - 1.0) > 1e-6:
             raise ValueError(f"Weights must sum to 1.0 (got {total})")
 
-    def calculate(self, ccs: float, eav: float, cpr: float, wm: float) -> float:
+    def calculate(self, ccs: float, eav: float, cpr: float, wm: float = 0.0) -> float:
         """Compute weighted ECDS Shock Index from normalized inputs."""
         weighted = (
             self.alpha_ccs * _clip_01(ccs)
@@ -198,6 +246,11 @@ class ShockIndexCalculator:
 
         Returns the input DataFrame with new columns appended:
             ccs, eav, cpr, wm, shock_index, risk_tier
+
+        Raises ``ValueError`` if a required column is missing, or if any
+        required column contains NaN (e.g. ``measure_weight`` after merging
+        an ECDS measure_id that has no row in the weights file) — scoring
+        must never launder missing data into a [0, 1] risk score.
         """
         required = {
             "completeness_rate",
@@ -209,6 +262,23 @@ class ShockIndexCalculator:
         missing = required - set(df.columns)
         if missing:
             raise ValueError(f"DataFrame is missing required columns: {sorted(missing)}")
+
+        nan_columns = [col for col in sorted(required) if df[col].isna().any()]
+        if nan_columns:
+            ids = (
+                df["measure_id"].astype(str)
+                if "measure_id" in df.columns
+                else df.index.to_series().astype(str)
+            )
+            details = "; ".join(
+                f"{col} is NaN for measure_ids {sorted(ids[df[col].isna()])}"
+                for col in nan_columns
+            )
+            raise ValueError(
+                f"Cannot score rows with missing values: {details}. "
+                "Complete the weights file or drop the affected rows "
+                "(e.g. df.dropna()) before scoring."
+            )
 
         result = df.copy()
         result["ccs"] = result.apply(
@@ -243,11 +313,23 @@ class ShockIndexCalculator:
             max_shock_index      – worst-case measure
             measure_count        – number of measures
             risk_tier            – tier for the weighted index
+
+        Raises ``ValueError`` if ``shock_index`` or ``measure_weight``
+        contains NaN: pandas would silently skip NaN in some statistics but
+        not others, producing a summary whose statistics describe different
+        row sets.
         """
         required = {"shock_index", "measure_weight"}
         missing = required - set(scored_df.columns)
         if missing:
             raise ValueError(f"DataFrame is missing required columns: {sorted(missing)}")
+
+        for col in sorted(required):
+            if scored_df[col].isna().any():
+                raise ValueError(
+                    f"aggregate_contract requires finite {col} values; found NaN. "
+                    "Resolve missing values before aggregating."
+                )
 
         total_weight = scored_df["measure_weight"].sum()
         if total_weight == 0:

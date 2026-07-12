@@ -47,9 +47,17 @@ citations are in [References](#references).
   reasonably stable distributions, so deviation in either direction is the risk signal.
 - **Prior behavior.** A stable distribution (`variance_ratio = 1.0`) mapped to **0.5**,
   overstating baseline risk, and only upward variance increased risk.
-- **Change.** EAV is the absolute deviation from baseline,
+- **Change.** EAV became the absolute deviation from baseline,
   `|variance_ratio/baseline − 1| / sensitivity` (default `sensitivity = 1.0`). Stable →
-  0.0; a ratio of 1.45 → **0.45**; 0.55 → 0.45 (symmetric).
+  0.0.
+- **Cycle-1 revision ([ADR-0003](decisions/0003-log-symmetric-eav.md)).** The arithmetic
+  deviation delivered symmetry only additively — halving scored 0.5 while doubling scored
+  1.0, structurally understating deflation risk. EAV now measures deviation on the **log
+  scale**, `|ln(variance_ratio/baseline)| / (sensitivity · ln 2)`, so `eav(r) = eav(1/r)`
+  exactly (Törnqvist, Vartia & Vartia 1985: the log-change is the only symmetric, additive,
+  normed indicator of relative change). A ratio of 1.45 → **0.5361** and its reciprocal
+  0.6897 → **0.5361**; saturation at a doubling *or halving* (generally `2**sensitivity`
+  and its reciprocal); a non-positive ratio is degenerate and scores 1.0.
 
 ### CPR — Cutpoint Pressure Risk (guardrail-aware)
 - **Finding.** CMS guardrails cap realized one-year cut-point movement (±5%), so risk
@@ -69,6 +77,15 @@ citations are in [References](#references).
   5.0` correctly corresponds to the improvement weight. No formula change — the
   docstring now records the current categorical schema, and the example weights use real
   CMS categories (process = 1, outcome = 3).
+- **Cycle-1 revision ([ADR-0002](decisions/0002-remove-wm-from-measure-composite.md)).**
+  WM is an **exposure** indicator (how much a measure counts in Stars), not a hazard.
+  Including it additively in the measure composite (δ = 0.20) while `aggregate_contract`
+  also weights by `measure_weight` counted weight twice (OECD/JRC Handbook double-counting
+  warning), imposed a pure-exposure risk floor (a perfectly healthy weight-5 measure scored
+  0.20), and produced rank inversions. The measure-level composite is now hazard-only with
+  neutrally renormalized weights (CCS 0.4375, EAV 0.3125, CPR 0.25 — preserving the prior
+  hazard ratios); WM is still computed and reported, and exposure enters exactly once, as
+  the aggregation weight at contract level (hazard × exposure).
 
 ### Naming — "shock index"
 - The clinical shock index (Allgöwer & Buri, 1967) is a **ratio** (heart rate ÷ systolic
@@ -84,12 +101,19 @@ citations are in [References](#references).
 | EAV | stable → 0.5 | `\|ratio − 1\|/sensitivity`, stable → 0 | CMS clustering stability |
 | CPR | linear `\|shift\|/0.5` | guardrail-bounded realized + latent | CMS guardrails (±5%) |
 | WM | linear `weight/5` (docs only) | same math, schema documented | CMS 2026 weights |
+| Composite | WM additive (δ = 0.20) **and** weight at aggregation (double count) | hazard-only (0.4375/0.3125/0.25); exposure once, at aggregation | OECD/JRC Handbook 2008 — [ADR-0002](decisions/0002-remove-wm-from-measure-composite.md) |
+| EAV | `\|ratio − 1\|/sensitivity` (additive symmetry) | `\|ln ratio\|/(s·ln 2)` (reciprocal symmetry) | Törnqvist et al. 1985 — [ADR-0003](decisions/0003-log-symmetric-eav.md) |
+| All scorers | NaN silently → 1.0; ±inf → extremes; unmatched merge fabricates tiers | `ValueError` on non-finite inputs; NaN validation in batch/aggregate | In-repo reproductions — [ADR-0004](decisions/0004-reject-nonfinite-inputs.md) |
+| Batch pipeline | no numeric oracle (×0.9 mutation passed all tests) | formula-derived golden file, full schema | Mutation experiment — [ADR-0005](decisions/0005-golden-file-batch-oracles.md) |
 
 ## Future work (not implemented)
-- A **health-equity risk** component reflecting the Health Equity Index that replaces the
-  reward factor in upcoming Star years.
+- A **health-equity risk** component reflecting the Health Equity Index — status now
+  tracked in [ADR-0010](decisions/0010-close-health-equity-component.md) (deferred; the
+  CY2027 fact sheet indicates the HEI reward is not implemented for 2027 Star Ratings).
 - **Empirical calibration** of the composite weights and `sensitivity`/`guardrail`
-  parameters against historical Stars years (back-testing).
+  parameters against historical Stars years (back-testing) — first step (sensitivity
+  tooling) tracked in [ADR-0007](decisions/0007-weight-sensitivity-tooling.md) (deferred
+  to cycle 2).
 
 ## References
 

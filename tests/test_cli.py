@@ -35,6 +35,14 @@ class TestSingleMode:
         assert "shock_index" in data
         assert "risk_tier" in data
 
+    def test_single_json_value_oracle(self):
+        # 0.4375*0.86 + 0.3125*0.74 + 0.25*0.58 = 0.7525 (ADR-0002 table);
+        # --wm omitted: optional and ignored under hazard-only default weights.
+        result = run_cli("single", "--ccs", "0.86", "--eav", "0.74", "--cpr", "0.58", "--json")
+        assert result.returncode == 0
+        data = json.loads(result.stdout)
+        assert data == {"shock_index": 0.7525, "risk_tier": "critical"}
+
     def test_no_args_shows_help(self):
         result = run_cli()
         assert result.returncode != 0

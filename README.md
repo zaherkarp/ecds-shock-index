@@ -57,14 +57,14 @@ from ecds_shock_index import ShockIndexCalculator, ccs_score, eav_score, cpr_sco
 
 # 1. Compute individual factor scores from raw inputs
 ccs = ccs_score(completeness_rate=0.82, mapping_coverage=0.90)   # -> 0.14 (completeness gap)
-eav = eav_score(variance_ratio=1.15)                              # -> 0.15 (deviation from baseline)
+eav = eav_score(variance_ratio=1.15)                              # -> 0.2016 (log-scale deviation)
 cpr = cpr_score(cutpoint_shift=0.22)                              # -> 0.868 (guardrail-aware)
-wm  = wm_score(measure_weight=3, max_weight=5)                    # -> 0.60
+wm  = wm_score(measure_weight=3, max_weight=5)                    # -> 0.60 (exposure, reported only)
 
-# 2. Calculate the composite shock index
+# 2. Calculate the composite shock index (hazard-only: CCS, EAV, CPR)
 calculator = ShockIndexCalculator()   # uses default weights
-index = calculator.calculate(ccs=ccs, eav=eav, cpr=cpr, wm=wm)
-print(f"Shock Index: {index:.4f}")    # 0.3801
+index = calculator.calculate(ccs=ccs, eav=eav, cpr=cpr)
+print(f"Shock Index: {index:.4f}")    # 0.3413
 
 # 3. Classify into a risk tier
 print(classify_risk(index))           # "moderate"
@@ -92,8 +92,8 @@ print(scored[["measure_id", "shock_index", "risk_tier"]])
 # Contract-level summary
 summary = calc.aggregate_contract(scored)
 print(summary)
-# {'weighted_shock_index': 0.322, 'mean_shock_index': 0.3018,
-#  'max_shock_index': 0.4207, 'measure_count': 3, 'risk_tier': 'moderate'}
+# {'weighted_shock_index': 0.3057, 'mean_shock_index': 0.3081,
+#  'max_shock_index': 0.5028, 'measure_count': 3, 'risk_tier': 'moderate'}
 ```
 
 ## Command Line Interface
@@ -105,15 +105,16 @@ The CLI supports two modes: **single** (pre-computed scores) and **batch** (CSV 
 Compute the index from four pre-computed factor scores:
 
 ```bash
-# Basic usage
-python -m src.cli single --ccs 0.86 --eav 0.74 --cpr 0.58 --wm 0.60
-# Output: ECDS Shock Index: 0.7220  (high risk)
+# Basic usage (--wm is deprecated and ignored under the default
+# hazard-only weights; Stars weight enters at contract aggregation)
+python -m src.cli single --ccs 0.86 --eav 0.74 --cpr 0.58
+# Output: ECDS Shock Index: 0.7525  (critical risk)
 
 # JSON output
-python -m src.cli single --ccs 0.86 --eav 0.74 --cpr 0.58 --wm 0.60 --json
-# Output: {"shock_index": 0.722, "risk_tier": "high"}
+python -m src.cli single --ccs 0.86 --eav 0.74 --cpr 0.58 --json
+# Output: {"shock_index": 0.7525, "risk_tier": "critical"}
 
-# Legacy flat-argument style (backwards compatible)
+# Legacy flat-argument style (backwards compatible; --wm accepted but ignored)
 python -m src.cli --ccs 0.86 --eav 0.74 --cpr 0.58 --wm 0.60
 ```
 
@@ -162,14 +163,18 @@ Shock index scores are classified into four tiers:
 
 ## Component Reference
 
-All four components are **risk** scores in `[0, 1]` where higher means more risk.
+All four components are scores in `[0, 1]` where higher means more risk. The three
+**hazard** components (CCS, EAV, CPR) form the measure-level composite; WM is an
+**exposure** indicator, reported per measure and applied exactly once — as the
+aggregation weight in the contract-level rollup (hazard × exposure; see
+[`docs/decisions/0002`](docs/decisions/0002-remove-wm-from-measure-composite.md)).
 
-| Component | Full Name                        | What It Measures                                          | Default Weight |
-| --------- | -------------------------------- | --------------------------------------------------------- | -------------- |
-| CCS       | Clinical Completeness Gap Score  | Completeness gap, `1 − mean(completeness, mapping)`        | 0.35           |
-| EAV       | ECDS Adoption Variability        | Absolute deviation of the variance ratio from baseline    | 0.25           |
-| CPR       | Cutpoint Pressure Risk           | Guardrail-aware cutpoint movement pressure (CMS ±5% cap)  | 0.20           |
-| WM        | Weight Multiplier                | Stars measure weight amplification effect                 | 0.20           |
+| Component | Full Name                        | What It Measures                                            | Default Weight |
+| --------- | -------------------------------- | ----------------------------------------------------------- | -------------- |
+| CCS       | Clinical Completeness Gap Score  | Completeness gap, `1 − mean(completeness, mapping)`          | 0.4375         |
+| EAV       | ECDS Adoption Variability        | Log-scale deviation, `\|ln(ratio/baseline)\| / (s · ln 2)`   | 0.3125         |
+| CPR       | Cutpoint Pressure Risk           | Guardrail-aware cutpoint movement pressure (CMS ±5% cap)    | 0.25           |
+| WM        | Weight Multiplier                | Stars weight exposure (contract aggregation weight)         | 0.0 (reported) |
 
 ## Evidence Base
 
@@ -178,6 +183,15 @@ NCQA HEDIS ECDS literature — including CMS cut-point guardrails and Tukey outl
 deletion, the 2026 measure-weight changes, and the NCQA hybrid-to-digital transition
 timeline. See [`docs/literature-evaluation.md`](docs/literature-evaluation.md) for the
 full review, the rationale behind each formula, and references.
+
+## Methodology Governance
+
+Changes to the index methodology (formulas, weights, parameters, risk tiers) are governed
+by a standing statistician review team and an evidence-graded debate process — see
+[`docs/statistical-governance.md`](docs/statistical-governance.md). Every proposal,
+including rejected ones, is recorded in the decision log at
+[`docs/decisions/`](docs/decisions/) with its evidence trail and independent numerical
+verification.
 
 ## Data File Formats
 

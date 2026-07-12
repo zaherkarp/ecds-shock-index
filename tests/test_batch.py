@@ -100,3 +100,42 @@ class TestAggregateContract:
         calc = ShockIndexCalculator()
         summary = calc.aggregate_contract(df)
         assert summary["weighted_shock_index"] == 0.0
+
+
+class TestNaNValidation:
+    """Missing values must raise, never launder into scores. See ADR-0004."""
+
+    def test_unmatched_measure_id_raises(self):
+        # Left merge leaves NaN measure_weight for XYZ; previously wm_score
+        # scored it 1.0 and the aggregate silently described inconsistent
+        # row sets (weighted skips NaN, count/mean/max include the row).
+        ecds = pd.DataFrame(
+            {
+                "measure_id": ["COL", "XYZ"],
+                "completeness_rate": [0.95, 0.85],
+                "mapping_coverage": [0.93, 0.88],
+                "variance_ratio": [1.03, 1.10],
+                "cutpoint_shift": [0.02, 0.05],
+            }
+        )
+        weights = pd.DataFrame({"measure_id": ["COL"], "measure_weight": [1]})
+        merged = ecds.merge(weights, on="measure_id", how="left")
+        calc = ShockIndexCalculator()
+        with pytest.raises(ValueError, match="XYZ"):
+            calc.score_dataframe(merged)
+
+    def test_aggregate_contract_rejects_nan_weight(self):
+        df = pd.DataFrame(
+            {"shock_index": [0.5, 0.6], "measure_weight": [1.0, float("nan")]}
+        )
+        calc = ShockIndexCalculator()
+        with pytest.raises(ValueError, match="NaN"):
+            calc.aggregate_contract(df)
+
+    def test_aggregate_contract_rejects_nan_shock_index(self):
+        df = pd.DataFrame(
+            {"shock_index": [0.5, float("nan")], "measure_weight": [1.0, 2.0]}
+        )
+        calc = ShockIndexCalculator()
+        with pytest.raises(ValueError, match="NaN"):
+            calc.aggregate_contract(df)
