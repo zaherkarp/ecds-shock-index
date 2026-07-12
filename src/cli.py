@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     single.add_argument("--ccs", type=float, required=True, help="Clinical completeness gap score [0, 1] (higher = less complete)")
     single.add_argument("--eav", type=float, required=True, help="ECDS adoption variability score [0, 1]")
     single.add_argument("--cpr", type=float, required=True, help="Cutpoint pressure risk score [0, 1]")
-    single.add_argument("--wm", type=float, required=True, help="Weight multiplier score [0, 1]")
+    single.add_argument("--wm", type=float, default=0.0, help="DEPRECATED weight multiplier score [0, 1]; ignored under the default hazard-only weights (delta_wm=0.0) — Stars weight now enters once, at contract aggregation (see docs/decisions/0002)")
     single.add_argument("--json", action="store_true", dest="as_json", help="Output result as JSON")
 
     # -- batch mode --
@@ -103,9 +103,9 @@ def main() -> None:
         _run_batch(args)
     elif args.command == "single":
         _run_single(args.ccs, args.eav, args.cpr, args.wm, getattr(args, "as_json", False))
-    elif args.ccs is not None and args.eav is not None and args.cpr is not None and args.wm is not None:
-        # Legacy flat-argument mode
-        _run_single(args.ccs, args.eav, args.cpr, args.wm)
+    elif args.ccs is not None and args.eav is not None and args.cpr is not None:
+        # Legacy flat-argument mode (--wm optional and ignored under default weights)
+        _run_single(args.ccs, args.eav, args.cpr, args.wm if args.wm is not None else 0.0)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1,0 +1,4 @@
+measure_id,completeness_rate,mapping_coverage,variance_ratio,cutpoint_shift,measure_name,measure_weight,ccs,eav,cpr,wm,shock_index,risk_tier
+COL,0.95,0.93,1.03,0.02,Colorectal Cancer Screening,1,0.06,0.0426443374,0.32,0.2,0.1195763554,low
+BCS,0.72,0.68,1.45,0.09,Breast Cancer Screening,1,0.3,0.5360529002,0.816,0.2,0.5027665313,high
+A1C,0.85,0.88,1.1,0.05,HbA1c Control for Patients with Diabetes,3,0.135,0.1375035237,0.8,0.6,0.3020323512,moderate

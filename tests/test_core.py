@@ -39,20 +39,39 @@ class TestCcsScore:
 
 
 class TestEavScore:
+    """EAV is symmetric on the log scale: eav(r) == eav(1/r). See ADR-0003."""
+
     def test_baseline_is_zero_risk(self):
         assert eav_score(1.0, baseline=1.0) == pytest.approx(0.0)
 
     def test_above_baseline(self):
-        assert eav_score(1.5, baseline=1.0) == pytest.approx(0.5)
+        # |ln 1.5| / ln 2 = 0.4054651081 / 0.6931471806 (ADR-0003 table)
+        assert eav_score(1.5, baseline=1.0) == pytest.approx(0.5849625007)
 
-    def test_below_baseline_is_symmetric(self):
-        assert eav_score(0.5, baseline=1.0) == pytest.approx(0.5)
+    def test_reciprocal_symmetry_interior(self):
+        # Load-bearing symmetry oracle: |ln 0.8| = ln 1.25 = 0.2231435513
+        assert eav_score(0.8) == pytest.approx(0.3219280949)
+        assert eav_score(1.25) == pytest.approx(0.3219280949)
+
+    def test_reciprocal_symmetry_sweep(self):
+        for ratio in (0.6, 0.75, 0.9, 1.1, 1.3, 1.45):
+            assert eav_score(ratio) == pytest.approx(eav_score(1.0 / ratio))
+
+    def test_saturates_at_doubling_and_halving(self):
+        assert eav_score(2.0, baseline=1.0) == pytest.approx(1.0)
+        assert eav_score(0.5, baseline=1.0) == pytest.approx(1.0)
 
     def test_clips_high_ratio(self):
         assert eav_score(3.0, baseline=1.0) == pytest.approx(1.0)
 
     def test_sensitivity_scales_deviation(self):
-        assert eav_score(1.5, baseline=1.0, sensitivity=2.0) == pytest.approx(0.25)
+        # Saturation anchor moves to 2**sensitivity: |ln 1.5| / (2 ln 2)
+        assert eav_score(1.5, baseline=1.0, sensitivity=2.0) == pytest.approx(0.2924812504)
+
+    def test_nonpositive_ratio_is_max_risk(self):
+        # A variance ratio <= 0 is degenerate and scores 1.0 explicitly.
+        assert eav_score(0.0) == pytest.approx(1.0)
+        assert eav_score(-1.0) == pytest.approx(1.0)
 
     def test_invalid_baseline(self):
         with pytest.raises(ValueError, match="baseline"):
@@ -107,6 +126,51 @@ class TestWmScore:
             wm_score(1, max_weight=0)
 
 
+class TestNonFiniteInputs:
+    """No non-finite input may map into [0, 1]. See ADR-0004.
+
+    Previously NaN silently scored 1.0 (maximum risk) via ``min(1.0, nan)``
+    argument ordering, and infinities scored sign-dependent extremes.
+    """
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_ccs_rejects_nonfinite(self, bad):
+        with pytest.raises(ValueError, match="finite"):
+            ccs_score(bad, 0.9)
+        with pytest.raises(ValueError, match="finite"):
+            ccs_score(0.9, bad)
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_eav_rejects_nonfinite(self, bad):
+        with pytest.raises(ValueError, match="finite"):
+            eav_score(bad)
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_cpr_rejects_nonfinite(self, bad):
+        with pytest.raises(ValueError, match="finite"):
+            cpr_score(bad)
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_wm_rejects_nonfinite(self, bad):
+        with pytest.raises(ValueError, match="finite"):
+            wm_score(bad)
+
+    def test_ccs_positive_inf_scored_minimum_before(self):
+        # 1 - (inf + 0.9)/2 = -inf clipped to 0.0 (silent minimum risk lane)
+        with pytest.raises(ValueError, match="finite"):
+            ccs_score(float("inf"), 0.9)
+
+    def test_wm_negative_inf_scored_minimum_before(self):
+        # -inf / 5 clipped to 0.0 (silent minimum risk lane)
+        with pytest.raises(ValueError, match="finite"):
+            wm_score(float("-inf"))
+
+    def test_ccs_inf_minus_inf_regenerates_nan(self):
+        # inf + (-inf) = nan internally; defeats a NaN-only boundary check
+        with pytest.raises(ValueError, match="finite"):
+            ccs_score(float("inf"), float("-inf"))
+
+
 # ---------------------------------------------------------------------------
 # Risk classification
 # ---------------------------------------------------------------------------
@@ -140,6 +204,16 @@ class TestClassifyRisk:
 
 
 class TestShockIndexCalculator:
+    def test_default_weights_exact(self):
+        # Hazard-only defaults: neutral renormalization of (0.35, 0.25, 0.20)
+        # by 1/(1 - 0.20); WM exposure enters only at contract aggregation.
+        # See ADR-0002.
+        calc = ShockIndexCalculator()
+        assert calc.alpha_ccs == 0.4375
+        assert calc.beta_eav == 0.3125
+        assert calc.gamma_cpr == 0.25
+        assert calc.delta_wm == 0.0
+
     def test_default_weights_sum_to_one(self):
         calc = ShockIndexCalculator()
         total = calc.alpha_ccs + calc.beta_eav + calc.gamma_cpr + calc.delta_wm

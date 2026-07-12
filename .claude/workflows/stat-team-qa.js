@@ -7,13 +7,15 @@ export const meta = {
   ],
 }
 
-const ROOT = (args && args.repo_root) || '/home/user/ecds-shock-index'
-const CYCLE = args.cycle_number
-const TODAY = args.today
-const MODE = args.evidence_mode || 'web'
-const ADRS = args.adr_files || []
-const CHANGED = args.changed_files || []
-const BASELINE = args.baseline_dir || '(no baseline dir provided — reconstruct the pre-batch behavior from git: `git stash` is NOT allowed; use `git show HEAD:<file>` to read pre-batch sources)'
+// args may arrive as a JSON-encoded string depending on the caller; parse defensively.
+const A = typeof args === 'string' ? JSON.parse(args) : (args || {})
+const ROOT = A.repo_root || '/home/user/ecds-shock-index'
+const CYCLE = A.cycle_number
+const TODAY = A.today
+const MODE = A.evidence_mode || 'web'
+const ADRS = A.adr_files || []
+const CHANGED = A.changed_files || []
+const BASELINE = A.baseline_dir || '(no baseline dir provided — reconstruct the pre-batch behavior from git: `git stash` is NOT allowed; use `git show HEAD:<file>` to read pre-batch sources)'
 
 const PROG_SCHEMA = {
   type: 'object',

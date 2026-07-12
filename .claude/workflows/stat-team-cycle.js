@@ -10,12 +10,14 @@ export const meta = {
   ],
 }
 
-const ROOT = (args && args.repo_root) || '/home/user/ecds-shock-index'
-const CYCLE = args.cycle_number
-const TODAY = args.today
-const MODE = args.evidence_mode || 'web'
-const LOG_SUMMARY = args.decision_log_summary || 'No prior decisions beyond ADR-0001 (framework adoption).'
-const FOCUS = args.focus_hint ? `\nFocus hint from the maintainer (optional, not binding): ${args.focus_hint}` : ''
+// args may arrive as a JSON-encoded string depending on the caller; parse defensively.
+const A = typeof args === 'string' ? JSON.parse(args) : (args || {})
+const ROOT = A.repo_root || '/home/user/ecds-shock-index'
+const CYCLE = A.cycle_number
+const TODAY = A.today
+const MODE = A.evidence_mode || 'web'
+const LOG_SUMMARY = A.decision_log_summary || 'No prior decisions beyond ADR-0001 (framework adoption).'
+const FOCUS = A.focus_hint ? `\nFocus hint from the maintainer (optional, not binding): ${A.focus_hint}` : ''
 
 const REVIEW_ROLES = ['methodologist', 'calibration', 'domain-evidence', 'programmer']
 const ROLE_TAG = { methodologist: 'METH', calibration: 'CAL', 'domain-evidence': 'DOM', programmer: 'PROG' }
