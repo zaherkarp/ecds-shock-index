@@ -47,12 +47,18 @@ def _require_finite(**values: float) -> None:
 # ---------------------------------------------------------------------------
 
 
-# Latent share of CPR carried by cutpoint movement *beyond* the CMS guardrail.
-# The realized one-year movement is capped by the guardrail, so most of the
-# component reflects guardrail-bounded pressure; the remainder represents the
-# deferred pressure that re-surfaces in later Star years. See
-# docs/literature-evaluation.md (CPR section) for the rationale.
-_CPR_LATENT_SHARE = 0.20
+CPR_LATENT_SHARE_DEFAULT = 0.20
+"""Latent share of CPR carried by cutpoint movement beyond the CMS guardrail (E4 judgment).
+
+At the guardrail boundary, ``cpr = 1 - L`` identically. The default 0.20
+means 80% of the component reflects guardrail-bounded (realized) pressure
+and 20% reflects deferred (latent) pressure. See ``docs/literature-evaluation.md``
+(CPR section) and ADR-0008 for the L-sweep and sensitivity analysis.
+
+**Degenerate boundary (L = 1.0):** the realized term vanishes — a shift *at*
+the guardrail scores 0.0, because the entire component is assigned to latent
+pressure, which is zero when no excess exists.
+"""
 
 
 def ccs_score(completeness_rate: float, mapping_coverage: float) -> float:
@@ -105,11 +111,19 @@ def eav_score(variance_ratio: float, baseline: float = 1.0, sensitivity: float =
     return _clip_01(abs(math.log(variance_ratio / baseline)) / (sensitivity * math.log(2.0)))
 
 
-def cpr_score(cutpoint_shift: float, guardrail: float = 0.05, max_shift: float = 0.5) -> float:
+def cpr_score(
+    cutpoint_shift: float,
+    guardrail: float = 0.05,
+    max_shift: float = 0.5,
+    latent_share: float = CPR_LATENT_SHARE_DEFAULT,
+) -> float:
     """Compute the guardrail-aware Cutpoint Pressure Risk (CPR) score.
 
-    CMS caps year-over-year cut-point movement with a guardrail (±5% for
-    non-CAHPS measures with at least three years of data), so the *realized*
+    CMS caps year-over-year cut-point movement at 5 percentage points for
+    measures on a 0–100 scale, or 5% of the prior year's restricted score
+    range otherwise; guardrails apply to non-CAHPS measures but NOT to the
+    improvement measures or to measures in the program 3 years or less
+    (respecified measures are treated as new). The *realized*
     one-year movement saturates at the guardrail. CPR therefore has two parts:
 
         realized = min(|shift|, guardrail) / guardrail        # bounded by the cap
@@ -120,18 +134,31 @@ def cpr_score(cutpoint_shift: float, guardrail: float = 0.05, max_shift: float =
     excess contributes the (smaller) latent share, representing pressure that
     re-surfaces in later Star years once the guardrail relaxes.
 
-    Raises ``ValueError`` if any input is NaN or infinite, or if ``guardrail``
-    or ``max_shift`` is not positive.
+    ``latent_share`` (L) controls the realized/latent split. At L = 1.0 the
+    realized term vanishes: ``cpr(shift=guardrail, L=1.0) = 0.0`` because
+    no excess exists. See ``CPR_LATENT_SHARE_DEFAULT`` and ADR-0008.
+
+    Raises ``ValueError`` if any input is NaN or infinite, if ``guardrail``
+    or ``max_shift`` is not positive, or if ``latent_share`` is outside [0, 1].
     """
-    _require_finite(cutpoint_shift=cutpoint_shift, guardrail=guardrail, max_shift=max_shift)
+    _require_finite(
+        cutpoint_shift=cutpoint_shift,
+        guardrail=guardrail,
+        max_shift=max_shift,
+        latent_share=latent_share,
+    )
     if guardrail <= 0:
         raise ValueError("guardrail must be greater than zero")
     if max_shift <= 0:
         raise ValueError("max_shift must be greater than zero")
+    if not (0.0 <= latent_share <= 1.0):
+        raise ValueError(
+            f"latent_share must be between 0.0 and 1.0 (got {latent_share})"
+        )
     shift = abs(cutpoint_shift)
     realized = min(shift, guardrail) / guardrail
     latent = max(shift - guardrail, 0.0) / max_shift
-    return _clip_01((1.0 - _CPR_LATENT_SHARE) * realized + _CPR_LATENT_SHARE * latent)
+    return _clip_01((1.0 - latent_share) * realized + latent_share * latent)
 
 
 def wm_score(measure_weight: float, max_weight: float = 5.0) -> float:
@@ -237,6 +264,7 @@ class ShockIndexCalculator:
         max_shift: float = 0.5,
         max_weight: float = 5.0,
         sensitivity: float = 1.0,
+        latent_share: float = CPR_LATENT_SHARE_DEFAULT,
     ) -> pd.DataFrame:
         """Compute shock index for each row of a DataFrame.
 
@@ -289,7 +317,7 @@ class ShockIndexCalculator:
             lambda v: eav_score(v, sensitivity=sensitivity),
         )
         result["cpr"] = result["cutpoint_shift"].apply(
-            lambda v: cpr_score(v, guardrail=guardrail, max_shift=max_shift),
+            lambda v: cpr_score(v, guardrail=guardrail, max_shift=max_shift, latent_share=latent_share),
         )
         result["wm"] = result["measure_weight"].apply(
             lambda v: wm_score(v, max_weight=max_weight),
@@ -349,6 +377,7 @@ class ShockIndexCalculator:
 
 
 __all__ = [
+    "CPR_LATENT_SHARE_DEFAULT",
     "RISK_TIERS",
     "ShockIndexCalculator",
     "classify_risk",

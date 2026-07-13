@@ -31,7 +31,7 @@ We define four components, each normalized to a 0–1 **risk** scale (higher = m
 
 - **CCS (Clinical Completeness Gap):** The gap between perfect and actual data completeness/mapping. Incomplete capture is the dominant ECDS-transition risk, so *less* complete data scores higher.
 - **EAV (ECDS Adoption Variability):** How far the distribution deviates from its stable baseline in either direction, measured on the log scale so a k-fold compression and a k-fold inflation carry identical risk; a stable distribution carries no adoption-variability risk.
-- **CPR (Cutpoint Pressure Risk):** Expected cutpoint movement, anchored to the CMS ±5% guardrail that caps realized year-over-year movement; movement beyond the guardrail represents latent pressure deferred to later Star years.
+- **CPR (Cutpoint Pressure Risk):** Expected cutpoint movement, anchored to the CMS guardrail that caps realized year-over-year movement at 5 percentage points (0–100 scale) or 5% of the prior year's restricted score range; guardrails do not apply to improvement measures or measures in the program 3 years or less. Movement beyond the guardrail represents latent pressure deferred to later Star years.
 - **WM (Weight Multiplier):** How strongly Stars weighting amplifies the impact of that measure (process = 1, outcome = 3, improvement = 5; patient experience = 2 as of 2026). WM is an *exposure* indicator, reported alongside the hazard components; it enters the contract-level rollup as the aggregation weight rather than the measure-level composite.
 
 > The clinical shock index (Allgöwer & Buri, 1967) is a *ratio* of heart rate to systolic blood pressure. This index borrows the "compact early-warning signal" idea but is a weighted *composite*, not a ratio.

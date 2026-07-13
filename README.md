@@ -173,7 +173,7 @@ aggregation weight in the contract-level rollup (hazard × exposure; see
 | --------- | -------------------------------- | ----------------------------------------------------------- | -------------- |
 | CCS       | Clinical Completeness Gap Score  | Completeness gap, `1 − mean(completeness, mapping)`          | 0.4375         |
 | EAV       | ECDS Adoption Variability        | Log-scale deviation, `\|ln(ratio/baseline)\| / (s · ln 2)`   | 0.3125         |
-| CPR       | Cutpoint Pressure Risk           | Guardrail-aware cutpoint movement pressure (CMS ±5% cap)    | 0.25           |
+| CPR       | Cutpoint Pressure Risk           | Guardrail-aware cutpoint movement pressure (CMS 5 pp cap; not applied to improvement measures or measures in program ≤3 years) | 0.25           |
 | WM        | Weight Multiplier                | Stars weight exposure (contract aggregation weight)         | 0.0 (reported) |
 
 ## Evidence Base
@@ -203,7 +203,7 @@ verification.
 | `completeness_rate`| float | Data completeness rate [0, 1]                |
 | `mapping_coverage` | float | Coding/mapping coverage rate [0, 1]          |
 | `variance_ratio`   | float | Variance ratio vs. baseline (1.0 = no change)|
-| `cutpoint_shift`   | float | Absolute cutpoint shift; compared against the CMS ±5% guardrail (0.05) |
+| `cutpoint_shift`   | float | Absolute cutpoint shift; compared against the CMS guardrail (5 pp on 0–100 scale, 0.05 in fraction units) |
 
 ### CMS Measure Weights CSV (`--weights`)
 

@@ -3,6 +3,7 @@
 import pytest
 
 from ecds_shock_index import (
+    CPR_LATENT_SHARE_DEFAULT,
     ShockIndexCalculator,
     classify_risk,
     ccs_score,
@@ -109,6 +110,27 @@ class TestCprScore:
     def test_invalid_max_shift(self):
         with pytest.raises(ValueError, match="max_shift"):
             cpr_score(0.2, max_shift=0)
+
+    def test_latent_share_default(self):
+        # L=0.20 (default): shift 0.02, realized=0.4, latent=0
+        # CPR = 0.80*0.4 + 0.20*0 = 0.32
+        assert cpr_score(0.02, latent_share=CPR_LATENT_SHARE_DEFAULT) == pytest.approx(0.32)
+
+    def test_latent_share_half(self):
+        # L=0.50: shift 0.09, realized=1.0, latent=(0.09-0.05)/0.5=0.08
+        # CPR = 0.50*1.0 + 0.50*0.08 = 0.54
+        assert cpr_score(0.09, latent_share=0.50) == pytest.approx(0.54)
+
+    def test_latent_share_degenerate(self):
+        # L=1.0: realized term vanishes; shift exactly at guardrail, no excess
+        # CPR = 0.0*1.0 + 1.0*0.0 = 0.0
+        assert cpr_score(0.05, latent_share=1.0) == pytest.approx(0.0)
+
+    def test_latent_share_validation(self):
+        with pytest.raises(ValueError, match="latent_share"):
+            cpr_score(0.02, latent_share=-0.1)
+        with pytest.raises(ValueError, match="latent_share"):
+            cpr_score(0.02, latent_share=1.5)
 
 
 class TestWmScore:

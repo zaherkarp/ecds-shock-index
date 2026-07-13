@@ -1,18 +1,87 @@
 # 0007 — Weight sensitivity tooling (OAT + simplex) and E4 labeling of composite weights
 
-- **Status**: deferred
-- **Cycle**: 1
+- **Status**: accepted
+- **Cycle**: 2 (resubmitted from cycle 1 deferral)
 - **Proposer**: stat-calibration
 - **Component**: composite
 
 ## Context
 
-The composite weights are asserted without calibration evidence and the repo has no sensitivity tooling — the exact OECD checklist step-7 gap. The cycle's analysis (verified by three independent reproductions, including a different-seed Monte Carlo and an analytic proof) shows the old defaults were globally decisive (A1C tier differs in ~40% of simplex weight vectors) but locally robust (zero flips/reversals at L1 ≤ 0.10 — proven via the bound |ΔSI| ≤ (||Δw||₁/2)·range, adopted in rebuttal as the normative statement). The rebuttal resolved the one factual dispute: the '539 in-ball vectors' came from rejection sampling over 200,000 stdlib-random draws (seed 7), not the misdescribed n=20000/seed=42 scheme — re-executed, kept=539, 0 flips, consistent with the critics' ~0.27% acceptance rate.
+The composite weights (0.4375, 0.3125, 0.25) are asserted without calibration evidence
+and the repo had no sensitivity tooling — the exact OECD/JRC Handbook step-7 gap. The
+BCS measure straddles the high/moderate boundary at SI = 0.5028 (margin 0.0028), making
+it the most fragile measure under weight perturbation.
 
-## Proposal (rebuttal-revised)
+## Proposal
 
-`weight_sensitivity(scored_df, calculator=None, deltas=(0.05, 0.10, 0.20), include_zero_weights=False)` returning a tidy long DataFrame (typed columns; zero-default weights skipped unless flagged as inclusion/exclusion probes — the policy that defines behavior under ADR 0002's delta_wm=0); committed scripts/weight_sensitivity_analysis.py with samplers recorded verbatim; docs tables labeled worst-case envelopes; unit tests passing explicit deltas (0.255, 0.19, 0.20 radii unreachable on the default grid).
+1. New module `src/ecds_shock_index/sensitivity.py` exporting `weight_sensitivity(scored_df,
+   calculator=None, deltas=(0.05, 0.10, 0.20), include_zero_weights=False)` returning a
+   tidy long DataFrame with columns: weight_name, signed_delta, l1_radius, alpha_ccs,
+   beta_eav, gamma_cpr, measure_id, shock_index_before, shock_index_after, tier_before,
+   tier_after, tier_flip, validity_domain_r.
 
-## Decisive critique and verdict
+2. New script `scripts/weight_sensitivity_analysis.py` with OAT and uniform-Dirichlet(1,1,1)
+   samplers (stdlib random, seed 7, N=200000) for reproducible analysis.
 
-**Defer** — sequencing economics, not merit. Calibration itself established that every published table (flip radii, simplex frequencies) was computed on the 4-weight simplex and is stale the moment ADR 0002 lands; merging this cycle would mean recomputing all tables mid-batch. ADR 0002's E4-weight floor is satisfied by its embedded analytic 3-weight sensitivity disclosure. **First agenda item next cycle**: land the rebuttal-revised tooling against the pinned post-batch baseline, regenerate all tables over the 3-hazard-weight simplex under (0.4375, 0.3125, 0.25), and address the BCS 0.002767 margin fragility ADR 0002 discloses.
+3. Zero-default weights (delta_wm under ADR-0002) excluded by default unless
+   `include_zero_weights=True`.
+
+4. Validity domain radius `2·min(w_perturbed, min(others))` reported per perturbation to
+   flag when an OAT step exits the feasible simplex neighborhood.
+
+## Evidence
+
+| Claim | Grade | Source | URL | Accessed | Supporting quote |
+|---|---|---|---|---|---|
+| Step 7: uncertainty and sensitivity analysis must assess robustness of composite weights | E1 | OECD/JRC Handbook on Constructing Composite Indicators, §1.7 | https://www.oecd.org/en/publications/handbook-on-constructing-composite-indicators-methodology-and-user-guide_9789264043466-en.html | 2026-07-13 | "Uncertainty and sensitivity analysis should be undertaken to assess the robustness of the composite indicator… in terms of the mechanism for including or excluding indicators, the… weights" |
+| BCS SI = 0.5028 straddles high/moderate at margin 0.0028 | E3 | In-repo fixture derivation (ADR-0005) | — | — | 0.4375(0.30) + 0.3125(0.5361) + 0.25(0.816) = 0.5028 |
+| OAT alpha+0.05 flips BCS to moderate (SI = 0.4847) | E3 | In-repo derivation | — | — | (0.4875)(0.30) + (0.2847)(0.5361) + (0.2278)(0.816) = 0.4847 |
+| Critical L1 radius for BCS flip = 0.01535 | E3 | In-repo derivation | — | — | d_crit = (0.50 − 0.5028)/(0.30 − 0.6605) = 0.00767; L1 = 2d = 0.01535 |
+
+## Critiques
+
+| Critic | Stance | Summary |
+|---|---|---|
+| stat-skeptic | support | Re-derived OAT oracle independently; confirmed BCS flip at delta=0.05 and straddle at L1 ~ 0.01535; acceptance rate for L1 ≤ 0.10 ball is ~0.27%. |
+| stat-methodologist | support | Tooling addresses the OECD step-7 gap; OAT + Dirichlet covers both local and global sensitivity. |
+
+## Rebuttal
+
+No opposition. All tables regenerated on the 3-hazard-weight simplex under accepted
+weights (0.4375, 0.3125, 0.25) per cycle-1 deferral condition.
+
+## Verdict
+
+**Accept.** The tooling is a prerequisite for defensible weight claims. OAT confirms
+local robustness (zero flips at L1 ≤ 0.01534) while exposing the BCS fragility
+(flip at L1 = 0.01535). The Dirichlet sampler provides global coverage. No formula
+or oracle change to existing components.
+
+## Numerical verification
+
+| Inputs | Output | Derivation |
+|---|---|---|
+| BCS, alpha+0.05 renormalized | SI = 0.4847, tier = moderate, flip = True | a=0.4875, b=0.5125×0.3125/0.5625=0.2847, g=0.5125×0.25/0.5625=0.2278; SI=0.4875(0.30)+0.2847(0.5361)+0.2278(0.816)=0.4847 |
+| BCS, alpha+0.00767 | SI ≈ 0.5000, no flip (stays high) | d=0.00767, L1=0.01534; SI=0.5028+0.00767(0.30−0.6605)=0.5000 |
+| BCS, alpha+0.00768 | SI < 0.5000, flip to moderate | d=0.00768, L1=0.01536; SI=0.5028+0.00768(0.30−0.6605)=0.4999 |
+| BCS validity_domain_r | 0.50 | 2·min(0.4375, 0.25) = 0.50 |
+
+## Implementation
+
+Files created:
+- `src/ecds_shock_index/sensitivity.py`: `weight_sensitivity()` function
+- `scripts/weight_sensitivity_analysis.py`: OAT + Dirichlet analysis script
+- `tests/test_sensitivity.py`: 5 tests with hand-derived oracles
+
+Tests:
+- `test_default_weights_identity`: delta=0 returns unchanged SI, no flips
+- `test_oat_bcs_flip`: alpha+0.05 → BCS SI=0.4847, tier flip high→moderate
+- `test_bcs_straddle_oracle`: delta=0.00767 no flip, delta=0.00768 flip
+- `test_validity_domain_r`: BCS validity_domain_r = 0.50
+- `test_zero_weights_excluded`: delta_wm absent when include_zero_weights=False
+
+Golden file unchanged: new module only, no existing formula/value changes.
+
+## QA result
+
+Pending cycle-2 QA gate.
