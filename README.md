@@ -20,11 +20,21 @@ As organizations transition quality measurement pipelines toward ECDS and digita
 ├── data/
 │   ├── raw/                  # Source extracts and lookup tables
 │   └── processed/            # Cleaned and analysis-ready tables
+├── docs/
+│   ├── methodology.md        # Full technical methodology reference
+│   ├── literature-evaluation.md  # Literature review and evidence base
+│   ├── statistical-governance.md # Governance process and team
+│   └── decisions/            # ADR decision log (0001–0013)
 ├── notebooks/                # Exploratory notebooks and simulations
+├── scripts/
+│   └── weight_sensitivity_analysis.py  # OAT + Dirichlet weight analysis
 ├── src/
 │   ├── cli.py                # Command-line interface (single & batch)
 │   └── ecds_shock_index/     # Core package
-├── tests/                    # Unit tests
+│       ├── __init__.py       # Scoring functions and calculator
+│       ├── data_loader.py    # CSV loading and merging utilities
+│       └── sensitivity.py    # Weight-sensitivity analysis module
+├── tests/                    # Unit tests (95 tests, oracle-pinned)
 ├── requirements.txt
 └── pyproject.toml
 ```
@@ -148,6 +158,32 @@ python -m src.cli batch \
   --max-shift 1.0 \
   --max-weight 3.0 \
   --sensitivity 1.0
+
+# Custom CPR latent share (default: 0.20)
+python -m src.cli batch \
+  --ecds data/raw/example_ncqa_ecds.csv \
+  --weights data/raw/example_cms_measure_weights.csv \
+  --latent-share 0.5
+```
+
+### Weight Sensitivity Analysis
+
+Run OAT perturbation and Dirichlet(1,1,1) Monte Carlo sampling on the weight simplex:
+
+```bash
+python scripts/weight_sensitivity_analysis.py \
+  --ecds data/raw/example_ncqa_ecds.csv \
+  --weights data/raw/example_cms_measure_weights.csv
+```
+
+Or use the Python API:
+
+```python
+from ecds_shock_index.sensitivity import weight_sensitivity
+
+oat_results = weight_sensitivity(scored_df, deltas=(0.05, 0.10, 0.20))
+flips = oat_results[oat_results["tier_flip"]]
+print(f"Tier flips found: {len(flips)}")
 ```
 
 ## Risk Tiers
@@ -175,6 +211,15 @@ aggregation weight in the contract-level rollup (hazard × exposure; see
 | EAV       | ECDS Adoption Variability        | Log-scale deviation, `\|ln(ratio/baseline)\| / (s · ln 2)`   | 0.3125         |
 | CPR       | Cutpoint Pressure Risk           | Guardrail-aware cutpoint movement pressure (CMS 5 pp cap; not applied to improvement measures or measures in program ≤3 years) | 0.25           |
 | WM        | Weight Multiplier                | Stars weight exposure (contract aggregation weight)         | 0.0 (reported) |
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [`docs/methodology.md`](docs/methodology.md) | Full technical methodology: formulas, parameters, aggregation, sensitivity analysis |
+| [`docs/literature-evaluation.md`](docs/literature-evaluation.md) | Literature review with component-by-component evidence and change history |
+| [`docs/statistical-governance.md`](docs/statistical-governance.md) | Governance process: evidence grades, debate protocol, batch rules, team roles |
+| [`docs/decisions/`](docs/decisions/) | Decision log (ADRs 0001-0013) with evidence trails and numerical verification |
 
 ## Evidence Base
 
