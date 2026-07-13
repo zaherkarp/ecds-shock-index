@@ -21,7 +21,9 @@ citations are in [References](#references).
   mean-resampling hierarchical clustering algorithm, applies **Tukey outer-fence
   outlier deletion** (outliers beyond 3.0 × IQR below Q1 / above Q3, effective with the
   2024 Star Ratings), and constrains year-over-year movement with **guardrails** that
-  cap cut-point changes at **±5%** for measures with at least three years of data.
+  cap cut-point changes at **5 percentage points** for measures on a 0–100 scale (or
+  5% of the prior year's restricted score range otherwise); guardrails are NOT applied
+  to the improvement measures or to measures in the program **3 years or less**.
   These mechanics mean realized single-year cut-point movement is *bounded*, not free.
 - **Measure weights.** CMS weights are categorical: process = 1, intermediate/outcome =
   3, the improvement measures = 5, and **patient-experience/access measures = 2 as of
@@ -60,15 +62,20 @@ citations are in [References](#references).
   and its reciprocal); a non-positive ratio is degenerate and scores 1.0.
 
 ### CPR — Cutpoint Pressure Risk (guardrail-aware)
-- **Finding.** CMS guardrails cap realized one-year cut-point movement (±5%), so risk
+- **Finding.** CMS guardrails cap realized one-year cut-point movement (5 percentage
+  points on a 0–100 scale, or 5% of the prior year's restricted score range; not
+  applied to improvement measures or measures in the program 3 years or less), so risk
   should saturate near the guardrail rather than scale linearly to an arbitrary maximum.
 - **Prior behavior.** Linear `|shift| / max_shift` with `max_shift = 0.5`, ignoring the
   guardrail entirely.
 - **Change.** CPR splits into a guardrail-bounded *realized* term and a smaller *latent*
   term for movement beyond the cap (deferred to later Star years):
-  `CPR = 0.8·min(|shift|, guardrail)/guardrail + 0.2·max(|shift| − guardrail, 0)/max_shift`
-  with `guardrail = 0.05`. A shift of 0.02 → **0.32**; at the 0.05 guardrail → **0.80**;
-  far beyond → up to 1.0. The 80/20 split is documented in code as `_CPR_LATENT_SHARE`.
+  `CPR = (1−L)·min(|shift|, guardrail)/guardrail + L·max(|shift| − guardrail, 0)/max_shift`
+  with `guardrail = 0.05` and `L = CPR_LATENT_SHARE_DEFAULT = 0.20`. A shift of 0.02 →
+  **0.32**; at the 0.05 guardrail → **0.80**; far beyond → up to 1.0. The latent share
+  is now a public constant and an optional `latent_share` kwarg on `cpr_score` and
+  `score_dataframe` ([ADR-0008](decisions/0008-expose-cpr-latent-share.md)); at L = 1.0
+  the realized term vanishes, so a shift exactly at the guardrail scores 0.0.
 
 ### WM — Weight Multiplier
 - **Finding.** CMS weights are categorical and the patient-experience weight dropped
@@ -99,21 +106,29 @@ citations are in [References](#references).
 |-----------|--------|-------|----------|
 | CCS | `mean(compl, map)` (complete = risky) | `1 − mean(compl, map)` (gap) | NCQA ECDS reporting guidance |
 | EAV | stable → 0.5 | `\|ratio − 1\|/sensitivity`, stable → 0 | CMS clustering stability |
-| CPR | linear `\|shift\|/0.5` | guardrail-bounded realized + latent | CMS guardrails (±5%) |
+| CPR | linear `\|shift\|/0.5` | guardrail-bounded realized + latent | CMS guardrails (5 pp / 5% restricted range) — [ADR-0011](decisions/0011-guardrail-eligibility-and-cap-wording.md) |
 | WM | linear `weight/5` (docs only) | same math, schema documented | CMS 2026 weights |
 | Composite | WM additive (δ = 0.20) **and** weight at aggregation (double count) | hazard-only (0.4375/0.3125/0.25); exposure once, at aggregation | OECD/JRC Handbook 2008 — [ADR-0002](decisions/0002-remove-wm-from-measure-composite.md) |
 | EAV | `\|ratio − 1\|/sensitivity` (additive symmetry) | `\|ln ratio\|/(s·ln 2)` (reciprocal symmetry) | Törnqvist et al. 1985 — [ADR-0003](decisions/0003-log-symmetric-eav.md) |
 | All scorers | NaN silently → 1.0; ±inf → extremes; unmatched merge fabricates tiers | `ValueError` on non-finite inputs; NaN validation in batch/aggregate | In-repo reproductions — [ADR-0004](decisions/0004-reject-nonfinite-inputs.md) |
 | Batch pipeline | no numeric oracle (×0.9 mutation passed all tests) | formula-derived golden file, full schema | Mutation experiment — [ADR-0005](decisions/0005-golden-file-batch-oracles.md) |
+| Health equity | future-work bullet promising HEI component | closed without build (EHO4all not implemented for 2027) | CMS CY2027 final rule (CMS-4208-F3/CMS-4212-F) — [ADR-0010](decisions/0010-close-health-equity-component.md) |
+| CPR docs | '±5% for measures with ≥3 years' (3 inversions, 8 shorthands) | 11-location canonical long form; guardrail=0.05 unchanged | CMS 2026 Technical Notes — [ADR-0011](decisions/0011-guardrail-eligibility-and-cap-wording.md) |
+| CPR | `_CPR_LATENT_SHARE` private, not tunable | public `CPR_LATENT_SHARE_DEFAULT`, `latent_share` kwarg on `cpr_score`/`score_dataframe`/CLI | OECD/JRC Handbook §1.7 — [ADR-0008](decisions/0008-expose-cpr-latent-share.md) |
+| Composite | no weight-sensitivity tooling (OECD step-7 gap) | `weight_sensitivity()` module, OAT + Dirichlet analysis script | OECD/JRC Handbook step 7 — [ADR-0007](decisions/0007-weight-sensitivity-tooling.md) |
 
 ## Future work (not implemented)
-- A **health-equity risk** component reflecting the Health Equity Index — status now
-  tracked in [ADR-0010](decisions/0010-close-health-equity-component.md) (deferred; the
-  CY2027 fact sheet indicates the HEI reward is not implemented for 2027 Star Ratings).
+- ~~A **health-equity risk** component reflecting the Health Equity Index~~ — **closed
+  without build** ([ADR-0010](decisions/0010-close-health-equity-component.md), accepted
+  cycle 2). CMS is not implementing the Excellent Health Outcomes for All reward
+  (formerly HEI) for the 2027 Star Ratings (CMS-4208-F3/CMS-4212-F, April 2 2026) and
+  continues the historical reward factor. Re-evaluate only if CMS finalizes an
+  implementation year.
 - **Empirical calibration** of the composite weights and `sensitivity`/`guardrail`
-  parameters against historical Stars years (back-testing) — first step (sensitivity
-  tooling) tracked in [ADR-0007](decisions/0007-weight-sensitivity-tooling.md) (deferred
-  to cycle 2).
+  parameters against historical Stars years (back-testing) — sensitivity tooling
+  (OAT + Dirichlet) landed in [ADR-0007](decisions/0007-weight-sensitivity-tooling.md)
+  (accepted cycle 2); empirical back-testing against historical Stars years remains
+  future work.
 
 ## References
 

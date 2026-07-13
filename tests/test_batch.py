@@ -57,6 +57,14 @@ class TestScoreDataframe:
         result = calc.score_dataframe(sample_df, max_shift=1.0, max_weight=3.0)
         assert len(result) == 3
 
+    def test_latent_share_threading(self, sample_df):
+        calc = ShockIndexCalculator()
+        result = calc.score_dataframe(sample_df, latent_share=0.50)
+        bcs = result[result["measure_id"] == "BCS"].iloc[0]
+        assert bcs["cpr"] == pytest.approx(0.54)
+        assert bcs["shock_index"] == pytest.approx(0.4337665313250656)
+        assert bcs["risk_tier"] == "moderate"
+
 
 class TestAggregateContract:
     def test_summary_keys(self, sample_df):

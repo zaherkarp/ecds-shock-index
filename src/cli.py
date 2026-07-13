@@ -11,7 +11,7 @@ import argparse
 import json
 import sys
 
-from ecds_shock_index import ShockIndexCalculator, classify_risk
+from ecds_shock_index import CPR_LATENT_SHARE_DEFAULT, ShockIndexCalculator, classify_risk
 from ecds_shock_index.data_loader import load_cms_measure_weights, load_ncqa_ecds, merge_ecds_and_weights
 
 
@@ -35,10 +35,11 @@ def build_parser() -> argparse.ArgumentParser:
     batch = sub.add_parser("batch", help="Score all measures from CSV files.")
     batch.add_argument("--ecds", required=True, help="Path to NCQA ECDS results CSV")
     batch.add_argument("--weights", required=True, help="Path to CMS measure weights CSV")
-    batch.add_argument("--guardrail", type=float, default=0.05, help="CMS cut-point guardrail cap for CPR (default: 0.05 = +/-5%%)")
+    batch.add_argument("--guardrail", type=float, default=0.05, help="CMS cut-point guardrail cap for CPR (default: 0.05 = 5 percentage points on 0-100 scale)")
     batch.add_argument("--max-shift", type=float, default=0.5, help="Max cutpoint shift for the latent CPR term (default: 0.5)")
     batch.add_argument("--max-weight", type=float, default=5.0, help="Max measure weight for WM normalization (default: 5.0)")
     batch.add_argument("--sensitivity", type=float, default=1.0, help="EAV deviation sensitivity (default: 1.0)")
+    batch.add_argument("--latent-share", type=float, default=CPR_LATENT_SHARE_DEFAULT, help=f"CPR latent share L in [0, 1] (default: {CPR_LATENT_SHARE_DEFAULT})")
     batch.add_argument("--output", "-o", help="Write scored CSV to this path (default: print to stdout)")
     batch.add_argument("--json", action="store_true", dest="as_json", help="Output contract-level summary as JSON")
 
@@ -73,6 +74,7 @@ def _run_batch(args: argparse.Namespace) -> None:
         max_shift=args.max_shift,
         max_weight=args.max_weight,
         sensitivity=args.sensitivity,
+        latent_share=args.latent_share,
     )
     summary = calc.aggregate_contract(scored)
 

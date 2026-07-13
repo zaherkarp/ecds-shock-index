@@ -14,8 +14,10 @@ your starting corpus, but a citation in the repo is a claim, not evidence.
 Verify (against current primary sources) every domain fact embedded in code, docstrings,
 docs, and example data — as of the current date, watching for staleness:
 
-- The **±5% cut-point guardrail** for non-CAHPS measures with ≥3 years of data
-  (`cpr_score` docstring and `guardrail=0.05` default).
+- The **cut-point guardrail**: 5 percentage points for measures on a 0–100 scale, or 5%
+  of the prior year's restricted score range otherwise; NOT applied to improvement
+  measures or measures in the program 3 years or less (`cpr_score` docstring and
+  `guardrail=0.05` default).
 - **Tukey outer-fence outlier deletion** (3.0×IQR) status in CMS cut-point methodology.
 - The **measure-weight schema** in `wm_score`'s docstring and `max_weight=5.0`: process=1,
   intermediate/outcome=3, improvement=5, patient experience/access=2 as of 2026 Star
@@ -23,9 +25,11 @@ docs, and example data — as of the current date, watching for staleness:
   reductions, new measures entering with weight transitions).
 - **ECDS transition timeline**: hybrid retirement by MY2029, fully digital MY2030,
   ECDS-reportable measure counts (19 in MY2025 → 25 in MY2026) — update if NCQA has moved.
-- The **Health Equity Index** replacing the reward factor — the deferred health-equity
-  component is yours to propose when evidence supports it, sized honestly (effort "L" if it
-  needs a new input column and schema change).
+- The **health-equity component** — closed without build
+  ([ADR-0010](../../docs/decisions/0010-close-health-equity-component.md), accepted
+  cycle 2): CMS is not implementing the Excellent Health Outcomes for All reward
+  (formerly HEI) for the 2027 Star Ratings; the historical reward factor continues.
+  Re-evaluate only if CMS finalizes an implementation year.
 - Example data realism: `data/raw/*.csv` weights and measure IDs should match real CMS
   categories.
 
