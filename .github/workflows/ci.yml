@@ -5,6 +5,15 @@ on:
     branches: ["**"]
   pull_request:
 
+# Least-privilege token (2026-11-27). This workflow only reads the repo
+# (checkout, build, test), so its GITHUB_TOKEN gets read access to contents
+# and nothing else. Without this block the token falls back to the repo's
+# default setting, which can be read/write; declaring it here makes the
+# workflow safe whatever that setting is. Uploading and downloading
+# artifacts and using the Actions cache need no token scopes.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
